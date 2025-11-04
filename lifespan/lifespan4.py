@@ -116,13 +116,10 @@ BASIC_PIECE_COLUMNS = [
     "pawn_1", "pawn_2", "pawn_3", "pawn_4",
     "pawn_5", "pawn_6", "pawn_7", "pawn_8"
 ]
-PROMOTION_PIECE_COLUMNS = [
-    "queen_promo_1", "queen_promo_2", "queen_promo_3", "queen_promo_4",
-    "queen_promo_5", "queen_promo_6", "queen_promo_7", "queen_promo_8",
-    "rook_promo_1", "rook_promo_2", "rook_promo_3", "rook_promo_4",
-    "bishop_promo_1", "bishop_promo_2", "bishop_promo_3", "bishop_promo_4",
-    "knight_promo_1", "knight_promo_2", "knight_promo_3", "knight_promo_4"
-]
+PROMOTION_PIECE_COLUMNS = []
+for piece in ['queen','rook','bishop','knight']:
+    for i in range(1,9):
+        PROMOTION_PIECE_COLUMNS.append(f"{piece}_promo_{i}")
 ALL_PIECE_COLUMNS = BASIC_PIECE_COLUMNS + PROMOTION_PIECE_COLUMNS
 
 def to_side(color):
