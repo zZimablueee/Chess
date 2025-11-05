@@ -40,7 +40,7 @@ db_path=r"C:\sqlite3\chess.db"
 conn=sqlite3.connect(db_path,timeout=15)
 cur=conn.cursor()
 #如果要更新整个表重算就运行
-#cur.execute("DROP TABLE IF EXISTS CaptureNPawn")
+cur.execute("DROP TABLE IF EXISTS CaptureNPawn")
 cur.execute("""CREATE TABLE CaptureNPawn(
             uid INTEGER PRIMARY KEY,
             CaptureRatio TEXT
@@ -125,4 +125,5 @@ for i, (uid, moves) in enumerate(rows, 1):
 
 conn.commit()
 conn.close()
+
 print("批量更新完成")
