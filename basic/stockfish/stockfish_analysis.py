@@ -1,4 +1,3 @@
-#在games_table7.py基础上改的 只要一个进度条
 #environment setup
 import pandas as pd
 import seaborn as sns
@@ -970,4 +969,5 @@ if __name__ == "__main__":
         output_filename=output_filename
     )
 
-# mpiexec -n 4 python "C:\Users\Administrator\Desktop\games_table8.py"
+# mpiexec -n 4 python "...\stockfish_analysis.py"
+
