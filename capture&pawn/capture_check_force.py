@@ -1,4 +1,4 @@
-#PawnCenterRatio CheckRatio ForceRatio
+#CaptureRatio CheckRatio ForceRatio
 from typing import Tuple, List, Dict, Optional,Callable,Any
 import chess
 import pandas as pd
@@ -78,15 +78,15 @@ cursor = conn.cursor()
 
 process = pd.read_sql_query("SELECT * FROM CaptureNPawn", conn)
 
-process[['PawnCenterBlack', 'PawnCenterWhite']] = process['PawnCenter'].str.split(',', expand=True).astype(float)
-black_pawncenter = process[['Black', 'PawnCenterBlack']].rename(columns={'Black': 'Player', 'PawnCenterBlack': 'PawnCenter Ratio'})
-white_pawncenter = process[['White', 'PawnCenterWhite']].rename(columns={'White': 'Player', 'PawnCenterWhite': 'PawnCenter Ratio'})
-all_pawncenter = pd.concat([black_pawncenter, white_pawncenter], axis=0)
-avg_pawncenter = all_pawncenter.groupby('Player')['PawnCenter Ratio'].mean().reset_index()
-avg_pawncenter.columns = ['Player', 'PawnCenterRatio']
+process[['CaptureRatioBlack', 'CaptureRatioWhite']] = process['CaptureRatio'].str.split(',', expand=True).astype(float)
+black_capture = process[['Black', 'CaptureRatioBlack']].rename(columns={'Black': 'Player', 'CaptureRatioBlack': 'Capture Ratio'})
+white_capture = process[['White', 'CaptureRatioWhite']].rename(columns={'White': 'Player', 'CaptureRatioWhite': 'Capture Ratio'})
+all_capture = pd.concat([black_capture, white_capture], axis=0)
+avg_capture = all_capture.groupby('Player')['Capture Ratio'].mean().reset_index()
+avg_capture.columns = ['Player', 'CaptureRatio']
 
 try:
-    cursor.execute("ALTER TABLE players ADD COLUMN PawnCenterRatio REAL")
+    cursor.execute("ALTER TABLE players ADD COLUMN CaptureRatio REAL")
 except sqlite3.OperationalError:
     # 如果列已经存在，就跳过
     pass
@@ -96,25 +96,25 @@ if "idx_players_player" not in indexes:
     print("创建索引 idx_players_player ...")
     cursor.execute("CREATE INDEX idx_players_player ON players(user)")
 
-avg_pawncenter.to_sql("tmp_pawncenter", conn, if_exists="replace", index=False)
+avg_capture.to_sql("tmp_capture", conn, if_exists="replace", index=False)
 
 cursor.execute("""
     UPDATE players
-    SET PawnCenterRatio = (
-        SELECT PawnCenterRatio
-        FROM tmp_pawncenter
-        WHERE tmp_pawncenter.Player = players.user
+    SET CaptureRatio = (
+        SELECT CaptureRatio
+        FROM tmp_capture
+        WHERE tmp_capture.Player = players.user
     )
     WHERE EXISTS (
         SELECT 1
-        FROM tmp_pawncenter
-        WHERE tmp_pawncenter.Player = players.user
+        FROM tmp_capture
+        WHERE tmp_capture.Player = players.user
     )
 """)
 
 conn.commit()
 conn.close()
-print("玩家PawnCenterRatio已更新完成")
+print("玩家CaptureRatio已更新完成")
 
 conn = sqlite3.connect(db_file)
 cursor = conn.cursor()
