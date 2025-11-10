@@ -1,4 +1,6 @@
+#PawnCenter (x,x) CaptureRatio(x,x)
 #增加数据库中两部分的更新 PawnCenterAdvance好CaptureRatio，由capture_n_pawn.ipynb改来
+#Capture part also be calculated in "capture_check_force.py", that part can be commented out
 import chess
 import pandas as pd
 import numpy as np
@@ -127,3 +129,4 @@ conn.commit()
 conn.close()
 
 print("批量更新完成")
+
