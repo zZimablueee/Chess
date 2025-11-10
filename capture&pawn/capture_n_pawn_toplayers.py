@@ -1,4 +1,5 @@
 #after running capture_n_pawn.py
+#Capture Ratio and Pawn Center
 #从数据库表格CaptureNPawn中读取游戏形式的数据，将其按照选手重新组合整理
 #再把整理后的表格新增到players表格中
 import pandas as pd
@@ -63,3 +64,4 @@ for start in range(0, n, chunksize):
     print(f"已更新 chunk rows {start}..{min(start+chunksize, n)-1} ({len(rows)} 行) 到 players")
 
 print("所有玩家数据已成功更新到 players 表")
+
