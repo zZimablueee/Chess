@@ -3,29 +3,44 @@ import pandas as pd
 import sqlite3
 from tqdm import tqdm
 import os
-def import_csv_to_db(csv_path, db_path, table_name, chunksize=2000):
+def import_csv_to_db(csv_path, db_path, table_name="CaptureNPawn", chunksize=2000):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL;")
-
     first_chunk = True
-    for chunk in pd.read_csv(csv_path, chunksize=chunksize, dtype=str):
+    new_cols = []
+    
+    for chunk in pd.read_csv(csv_path, dtype=str, chunksize=chunksize):
         if first_chunk:
-            cols = [f'"{c}" TEXT' for c in chunk.columns]
-            col_def = ", ".join(cols)
-            create_sql = f'CREATE TABLE IF NOT EXISTS "{table_name}" ({col_def});'
-            cursor.execute(create_sql)
+            #获取旧表列
+            cursor.execute(f'PRAGMA table_info("{table_name}")')
+            existing_cols = [row[1] for row in cursor.fetchall()]
+            # 找出 CSV 中的新列
+            new_cols = [c for c in chunk.columns if c not in existing_cols]
+            print("旧表列：", existing_cols)
+            print("CSV 新列：", new_cols)
+            #给旧表添加这些新列
+            for col in new_cols:
+                cursor.execute(f'ALTER TABLE "{table_name}" ADD COLUMN "{col}" TEXT;')
+            conn.commit()
+            print(f"已为旧表添加 {len(new_cols)} 个新列")
             first_chunk = False
-            print(f"已创建新表 {table_name}，共 {len(chunk.columns)} 列")
-
-        placeholders = ", ".join(["?"] * len(chunk.columns))
-        insert_sql = f'INSERT INTO "{table_name}" VALUES ({placeholders})'
-        cursor.executemany(insert_sql, chunk.values.tolist())
+        #处理当前 chunk
+        if "uid" not in chunk.columns:
+            raise ValueError("CSV 中必须包含 uid 列！")
+        #仅保留uid和新列
+        sub = chunk[["uid"] + new_cols].copy()
+        #批量更新
+        for _, row in sub.iterrows():
+            uid = row["uid"]
+            for col in new_cols:
+                cursor.execute(
+                    f'UPDATE "{table_name}" SET "{col}"=? WHERE uid=?',
+                    (row[col], uid)
+                )
         conn.commit()
-        print(f"已插入 {len(chunk)} 行")
-
+        print(f"本次 chunk（{len(chunk)} 行）更新完成")
     conn.close()
-    print("全部完成csv导入到数据库表 CaptureNPawn 中")
+    print(f"全部 CSV 数据已按 uid 成功更新到旧表{table_name}中！")
 
 def calculate_player_isolated_pawn(df):
     df_ea=pd.concat([
@@ -109,6 +124,7 @@ def import_csv_as_new_table(csv_path, db_path, table='players', chunksize=2000):
 
 def main():
     df = pd.read_csv(r"C:\Users\Administrator\Desktop\playerstyles\pawn100w.csv")
+    import_csv_to_db(r"C:\Users\Administrator\Desktop\playerstyles\pawn100w.csv", r"C:\sqlite3\chess.db", table_name='CaptureNPawn', chunksize=2000)
     comprehensive_player_analysis(df, "player_pawn.csv")
     import_csv_as_new_table("player_pawn.csv", r"C:\sqlite3\chess.db", table="players")
 
