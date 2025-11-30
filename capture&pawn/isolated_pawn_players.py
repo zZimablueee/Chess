@@ -77,6 +77,7 @@ def import_csv_as_new_table(csv_path, db_path, table='players', chunksize=2000):
     """
     读取 CSV 文件，并将其列添加到已存在的 SQLite 表中（保留原有数据）。
     根据 user 列匹配更新原表数据。
+    新的列将添加到数据库，但原有数据不会被删除。
     """
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -91,18 +92,18 @@ def import_csv_as_new_table(csv_path, db_path, table='players', chunksize=2000):
         # 必须存在 user 列
         if "user" not in chunk.columns:
             raise ValueError("CSV 中必须包含 user 列，用于匹配玩家。")
-        # 找出 CSV 中的新增列（排除 user）
-        new_cols = [c for c in chunk.columns if c not in existing_cols and c != "user"]
-        # 给表添加新列
-        for col in new_cols:
-            cursor.execute(f'ALTER TABLE "{table}" ADD COLUMN "{col}" TEXT;')
-            existing_cols.append(col)
-            print(f"新增列: {col}")
+        
+        # 获取 CSV 中的列名，排除 'user' 列
+        all_cols = [c for c in chunk.columns if c != "user"]
+        
+        # 确保所有列都在数据库中，新增的列会自动添加
+        for col in all_cols:
+            if col not in existing_cols:
+                # 如果数据库表中没有该列，添加新列
+                cursor.execute(f'ALTER TABLE "{table}" ADD COLUMN "{col}" TEXT;')
+                existing_cols.append(col)
+                print(f"新增列: {col}")
 
-        # 没有新增列 跳过所有 update
-        if not new_cols:
-            print("本批数据无新增列，跳过更新。")
-            continue
         # 一行一行更新
         for row in chunk.itertuples(index=False):
             row_dict = row._asdict()
@@ -110,23 +111,29 @@ def import_csv_as_new_table(csv_path, db_path, table='players', chunksize=2000):
             if user is None:
                 continue
 
-            set_clause = ", ".join([f'"{c}"=?' for c in new_cols])
-            values = [row_dict[c] for c in new_cols]
-            values.append(user)
+            # 为每一行生成 SET 子句，更新新列的数据
+            set_clause = ", ".join([f'"{col}"=?' for col in all_cols])
+            values = [row_dict[col] for col in all_cols]
+            values.append(user)  # 最后一个是 user 值
 
-            sql = f'UPDATE "{table}" SET {set_clause} WHERE user=?'
+            # 更新 SQL 语句
+            sql = f'UPDATE "{table}" SET {set_clause} WHERE "user"=?'
+            print(f"执行 SQL: {sql}, 值: {values}")  # 调试输出
             cursor.execute(sql, values)
+
         conn.commit()
         print(f"已处理 {len(chunk)} 行")
+    
     conn.close()
     print(f"CSV 导入完成，表 {table} 已更新")
+
 
 
 def main():
     df = pd.read_csv(r"C:\Users\Administrator\Desktop\playerstyles\pawn100w.csv")
     import_csv_to_db(r"C:\Users\Administrator\Desktop\playerstyles\pawn100w.csv", r"C:\sqlite3\chess.db", table_name='CaptureNPawn', chunksize=2000)
     comprehensive_player_analysis(df, "player_pawn.csv")
-    import_csv_as_new_table("player_pawn.csv", r"C:\sqlite3\chess.db", table="players")
+    import_csv_as_new_table(r"C:\Users\Administrator\Desktop\playerstyles\Chess\player_pawn.csv", r"C:\sqlite3\chess.db", table="players")
 
 if __name__=='__main__':
     main()
