@@ -1,4 +1,4 @@
-Name,tactical_Style_Prob,Rank_Percentile,IForest_Pct,ELO
+Name,Tactical_Style_Score,Rank_Percentile,IForest_Pct,ELO
 Ali Farahat,1.0,1.0,1.0,2616.0
 Ivan Provotorov,0.9993320964749537,0.9996289424860854,0.9988868274582561,2569.0
 Николай Хныкин,0.9992578849721707,0.9992578849721707,0.9992578849721707,2201.0
