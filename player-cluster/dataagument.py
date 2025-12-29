@@ -10,9 +10,30 @@ import os
 BASE_CSV_PATH = 'player_features.csv'
 DB_PATH = r"C:\sqlite3\chess.db"
 #主题词
-TOPIC_NAME = "Solid"
+TOPIC_NAME = "Tactical"
 #正样本名单
-POSITIVE_NAMES = ['Markus Ragger', 'Daniil Lintchevski', 'Alexandr Triapishko', 'David Paravyan', 'Aleksandr Lenderman', 'Dariusz Swiercz', 'Varuzhan Akobian', 'Javokhir Sindarov', 'PavelShkapenko', 'Gata Kamsky', 'David Navara', 'Boris Grachev', 'German Bazeev', 'Gyula Pap', 'Aradhya Garg', 'Vladislav Kovalev', 'Vladislav Artemiev', 'Alexander Grischuk', 'Gilbert Elroy Tarigan', 'Igor Lysyj', 'Nguyen Ngoc Truong Son', 'Vignesh N.R', 'Gnel Melikyan', 'Tamas Banusz', 'Alexey Dreev', 'Itgelt Khuyagtsogt', 'VladimirKramnik', 'Zviad Izoria', 'Dmitry MIschuk', 'Visakh NR', 'Jakub Pulpan', 'Haowen Xue', 'Eltaj Safarli', 'Jakhongir Vakhidov', 'Sebastien Maze', 'Abdulla Gadimbayli', 'Matthias Bluebaum', 'Rustam Rustamov', 'Jan Gustafsson', 'Leonid Starozhilov', 'Artem Bardyk', 'Vaclav Finek', 'Magnus Carlsen', 'Rasmus Svane', 'Grigor Grigorov', 'Marcus Harvey', 'Vuk Damjanovic', 'Michael Concio Jr.', 'Ethan Sheehan', 'Alfonso Llorente Zaro', 'Vojtěch Plát', 'Bogdan Daniel Deac', 'Mikhail Demidov', 'Sam Shankland', 'Aleksandr Usov']
+POSITIVE_NAMES = [
+    # --- Top Tier (2700+) ---
+    'Hikaru Nakamura', 'Alireza Firouzja', 'Daniil Dubov', 'Shakhriyar Mamedyarov',
+    'Maxime Vachier-Lagrave', 'Ian Nepomniachtchi', 'Jan-Krzysztof Duda',
+    'Alexander Grischuk', 'Vladimir Fedoseev', 'Parham Maghsoodloo', 'Arjun Erigaisi',
+
+    # --- High Tactical/Sharp (2600-2700) ---
+    'Salem AR Saleh', 'Javokhir Sindarov', 'Alex Fier',
+    'Mustafa Yilmaz','Vasif Durarbayli', 'Denis Khismatullin',
+    'Vitaliy Bernadskiy','Volodymyr Onyshchuk','Thomas Beerdsen','Bassem Amin'
+    # Vitaliy Bernadskiy ; Volodymyr Onyshchuk ; Thomas Beerdsen,'Bassem Amin'
+
+    # --- Mid/Low Tier & Online Specialists (Aggressive Style) ---
+    'Baadur Jobava', 'Simon Williams', 'Levy Rozman', 'Hans Niemann',
+    'Daniel Naroditsky', 'Andrew Tang', 
+    'Aman Hambleton', 'Eric Hansen', 'Yaacov Norowitz', 'Tanitoluwa Adewumi',
+    'Eline Roebers', 'Bibisara Assaubayeva', 'Novendra Priasmoro',
+    'Jose Fernando Cuenca',
+    'Jose Martinez','Tuan Minh Le','Vaishali R','Robert L. Hess','Eric Rosen'
+    #Eric Rosen ; Jose Martinez ；Tuan Minh Le； Vaishali R； Robert L. Hess； Emilio Cordova
+]
+
 #负样本名单
 NEGATIVE_NAMES = ['Egor Koshulyan', 'Nitin Senthilvel', 'Leo Valle Luis', 'Alex Fier', 'Almas Rakhmatullaev', 'David Gavrilescu', 'Ediz Gürel', 'Sebastian Mihajlov', 'Owen McCoy', 'Andy Woodward', 'Dachey Lin', 'Maciej Klekowski', 'Pranav Anand', 'Rohith Krishna', 'Ilamparthi A R', 'Deniel Safarov', 'Shreyas Royal', 'Daniel Chan', 'Sina Movahed', 'Iwo Karolczuk', 'Alexei Saveliev', 'Vadym Petrovskyi', 'Gabor Nagy', 'Nathaniel Mullodzhanov', 'Andrey Tsvetkov', 'Erick Zhao', 'Nicolai Maxime Østensen', 'Faustino Oro', 'Satria Duta Cahaya', 'Joaquin Fiorito', 'Arush Chitre', 'Andrew Tang', 'Jonah Willow', 'Alen Yeremyan', 'Maksim Ivannikov', 'Matvey Galchenko', 'Suyog Wagh', 'Krzysztof Jakubowski', 'Aydin Suleymanli', 'Joseph Girel', 'Atanas Dimitrov', 'Felix Ilinca', 'Reinis Paikens', 'Floryan Eugene', 'Alekhine Nouri', 'Pablo Salinas Herrera', 'Aaron Mendes', 'Johan-Sebastian Christiansen', 'Ilan Schnaider', 'Luka Paichadze', 'Sathvik Adiga', 'Egor Baskakov', 'Pranesh M', 'Kacper Piorun', 'Srihari L']
 
