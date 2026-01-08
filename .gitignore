@@ -1,3 +1,19 @@
 # large generated data
 ELO/temp.csv
 ELO/LSTM/temp2.csv
+# Python virtual environment
+ELO/LSTM/tf_env/
+
+# Keras / model outputs
+ELO/LSTM/*.keras
+
+# Data / outputs
+data/
+output_head20.csv
+
+# Jupyter Notebook checkpoints / temp files
+*.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
