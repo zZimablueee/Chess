@@ -1,0 +1,64 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\begin{document}
+
+\section*{Methodology for Quantifying Chess Decision Complexity}
+Based on Barthelemy (2025).
+
+\subsection*{1. Engine Evaluation}
+For a given position at ply $i$, using Stockfish:
+\begin{itemize}
+    \item Let $E_1$ be the evaluation of the \textbf{best move} (in centipawns).
+    \item Let $E_2$ be the evaluation of the \textbf{second best move}.
+    \item Define the evaluation gap $\Delta_i$:
+    \begin{equation}
+        \Delta_i = E_1 - E_2
+    \end{equation}
+\end{itemize}
+
+\subsection*{2. Probability Model (Boltzmann-like)}
+We introduce a perception threshold $\Delta_0$ (e.g., $\Delta_0 = 10$ cp for GMs). The probability of a human finding the optimal move is modeled as:
+\begin{equation}
+    P(\text{optimal}) = \frac{1}{1 + e^{-\Delta_i / \Delta_0}}
+\end{equation}
+\textbf{Limits:}
+\begin{itemize}
+    \item If $\Delta_i \gg \Delta_0 \implies P \to 1$ (Move is obvious).
+    \item If $\Delta_i \ll \Delta_0 \implies P \to \frac{1}{2}$ (Moves are indistinguishable).
+\end{itemize}
+
+\subsection*{3. Information Cost (Decision Difficulty)}
+The difficulty of choosing the move at ply $i$ is the information required to resolve the ambiguity, measured in bits:
+\begin{equation}
+    S(\Delta_i) = -\log_2 P = \log_2 \left( 1 + e^{-\frac{\Delta_i}{\Delta_0}} \right)
+\end{equation}
+\textbf{Interpretation:}
+\begin{itemize}
+    \item $\Delta_i \gg \Delta_0 \implies S \to 0$ bits (Zero difficulty).
+    \item $\Delta_i \ll \Delta_0 \implies S \to 1$ bit (Maximum difficulty for binary choice).
+\end{itemize}
+
+\subsection*{4. Cumulative Metrics}
+For a trajectory of $n$ plies:
+\begin{equation}
+    S(n) = \sum_{i=1}^{n} S(\Delta_i)
+\end{equation}
+Decomposed by color:
+\begin{itemize}
+    \item $S_W(n)$: Cumulative difficulty for White.
+    \item $S_B(n)$: Cumulative difficulty for Black.
+\end{itemize}
+
+\subsection*{5. Asymmetry ($A$)}
+Quantifies the imbalance in decision burden:
+\begin{equation}
+    A = S_B(n) - S_W(n)
+\end{equation}
+\begin{itemize}
+    \item $A > 0$: Black faces harder decisions.
+    \item $A < 0$: White faces harder decisions.
+\end{itemize}
+
+\end{document}

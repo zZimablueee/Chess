@@ -9,7 +9,7 @@ ELO/LSTM/*.keras
 
 # Data / outputs
 data/
-output_head20.csv
+test/
 
 # Jupyter Notebook checkpoints / temp files
 *.ipynb_checkpoints/
