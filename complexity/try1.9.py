@@ -24,7 +24,7 @@ class ProjectConfig:
             # 创建目录
             os.makedirs(self.output_dir, exist_ok=True)
             os.makedirs(self.temp_dir, exist_ok=True)
-            #os.makedirs(self.status_dir, exist_ok=True)
+            os.makedirs(self.status_dir, exist_ok=True)
             
             # 如果强制重跑，清理 temp 和 status
             if self.force_restart:
@@ -49,40 +49,6 @@ class ProjectConfig:
 
     def get_status_json_path(self, rank):
         return os.path.join(self.status_dir, f"processed_uids_rank_{rank}.json")
-    
-def get_processed_uids_from_csv(csv_path):
-    """
-    读取备份CSV文件中已经存在的 row_idx，返回一个集合。
-    用于替代之前的 JSON 断点记录。
-    """
-    processed_uids = set()
-    if not os.path.exists(csv_path):
-        return processed_uids
-    
-    try:
-        # 使用 buffering=1 防止读取过慢，但这里主要是读
-        with open(csv_path, 'r', encoding='utf-8') as f:
-            # 预读取判断是否为空
-            f.seek(0, os.SEEK_END)
-            if f.tell() == 0:
-                return processed_uids
-            f.seek(0)
-            
-            # 使用 DictReader 自动处理表头
-            reader = csv.DictReader(f)
-            if reader.fieldnames and 'row_idx' in reader.fieldnames:
-                for row in reader:
-                    try:
-                        # 确保读取的是数字
-                        val = row.get('row_idx')
-                        if val:
-                            processed_uids.add(int(val))
-                    except ValueError:
-                        continue 
-    except Exception as e:
-        print(f"[Warning] 读取断点文件 {csv_path} 失败: {e}")
-        
-    return processed_uids
 
 import os
 os.environ["PREFECT_API_URL"] = ""
@@ -564,7 +530,8 @@ def get_score_value(score, board, mate_score=1000):
     return value
 
 
-def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0, backup_csv_path=None):
+def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0, 
+                            backup_csv_path=None, status_json_path=None):
     """
     Function with global index offset.
     Read csv; process games by row; compute all the index.
@@ -572,19 +539,26 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0, ba
     """    
     lichess_analyzer = FullLichessAnalyzer()
     complexity_analyzer = ComplexityAnalyzer(delta_0=10.0)
+
+    all_games = []
+    skipped_indices = []
+    game_details = []
+    game_evaluations = []
     
     # 实时备份与状态管理
     backup_file_handle = None
     csv_writer = None
     current_uids_set = set()
-    if backup_csv_path:
-        current_uids_set = get_processed_uids_from_csv(backup_csv_path)
-        if len(current_uids_set) > 0 and is_verbose:
-            print(f"检测到断点文件，已跳过 {len(current_uids_set)} 局已分析游戏")
-    
-    backup_file_handle=None
-    csv_writer=None
 
+    # 读取断点记录 (如果存在)
+    if status_json_path and os.path.exists(status_json_path):
+        try:
+            with open(status_json_path, 'r') as f:
+                current_uids_set = set(json.load(f))
+        except:
+            current_uids_set = set()
+
+    # 打开/创建备份 CSV 文件
     if backup_csv_path:
         # 检查文件是否已有内容（决定是否写表头）
         file_exists = os.path.isfile(backup_csv_path) and os.path.getsize(backup_csv_path) > 0
@@ -617,7 +591,10 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0, ba
             rows = list(csv_reader)
 
             # 创建主进度条
-            pbar = tqdm.tqdm(total=len(rows), desc="总体进度", disable=not is_verbose)
+            pbar = tqdm.tqdm(total=len(rows), 
+                        desc="总体进度", 
+                        disable=not is_verbose)
+            
             # iterate each row
             for local_idx, row in enumerate(rows):
                 # calculate global index
@@ -646,9 +623,15 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0, ba
                 
                 # move sequence is empty
                 if not moves_str:
+                    all_games.append(empty_result)
+                    skipped_indices.append(global_idx)
+                    game_evaluations.append(None)
+                    
                     # 即使是空数据，也建议标记为已处理，防止下次卡住
-                    if csv_writer:
-                        csv_writer.writerow(list(empty_result))
+                    if status_json_path:
+                        current_uids_set.add(global_idx)
+                        with open(status_json_path, 'w') as f: json.dump(list(current_uids_set), f)
+                        
                     pbar.update(1)
                     continue
                 
@@ -658,8 +641,15 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0, ba
                                          for move_str in moves_list)
                 # skip illegal
                 if has_invalid_moves:
-                    if csv_writer:
-                        csv_writer.writerow(list(empty_result))
+                    all_games.append(empty_result)
+                    skipped_indices.append(global_idx)
+                    game_evaluations.append(None)
+                    
+                    # 标记非法数据为已处理
+                    if status_json_path:
+                        current_uids_set.add(global_idx)
+                        with open(status_json_path, 'w') as f: json.dump(list(current_uids_set), f)
+
                     pbar.update(1)
                     continue
                     
@@ -674,11 +664,19 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0, ba
                     "black": {'Blunder': 0, 'Mistake': 0, 'Inaccuracy': 0}
                 }
                 
-                e1_list ,e2_list, p_list, s_list= [],[],[],[]
-                cum_s_white ,cum_s_black = 0.0, 0.0
-                board = chess.Board()
-                analysis_success = True
+                e1_list = []
+                e2_list = []
+                p_list = []
+                s_list = []
+                cum_s_white = 0.0
+                cum_s_black = 0.0
+
+                # detailed information
                 move_details = []
+                
+                board = chess.Board()
+                move_number = 1
+                analysis_success = True
                 
                 try:
                     # --- 优化关键点：在循环外先分析一次初始局面 ---
@@ -691,6 +689,7 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0, ba
                     # 获取初始局面的所有指标
                     score_current = get_score_value(score_obj_best, board)
                     cp_curr, mate_curr, calc_curr = extract_white_relative_score(score_obj_best, board)
+                    # ----------------------------------------
 
                     for move_idx, move_str in enumerate(moves_list):
                         try:
@@ -704,8 +703,10 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0, ba
                             
                             # Complexity Calculation (Based on Position BEFORE move)
                             is_white_turn = board.turn 
+                        
                             e1_val = complexity_analyzer.score_to_cp(e1_obj)
                             e2_val = complexity_analyzer.score_to_cp(e2_obj) if e2_obj else None
+                        
                             delta, p_opt, entropy = complexity_analyzer.calculate_metrics(e1_val, e2_val)
                         
                             e1_list.append(str(e1_val))
@@ -728,6 +729,7 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0, ba
 
                             # 3. 分析新局面
                             result_current = engine.analyse(board, depth)
+                            
                             # 4. 更新"当前"数据
                             score_obj_best = result_current["pv_scores"].get(1, chess.engine.Cp(0))
                             score_current = get_score_value(score_obj_best, board)
@@ -738,6 +740,7 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0, ba
                             
                             evaluation_list.append(eval_str_current)
                             
+                            # 5. 开始计算各项指标
                             win_before_white = winning_chances_percent(score_before)
                             win_after_white = winning_chances_percent(score_current)
                             game_win_chances.append(win_after_white)
@@ -840,81 +843,136 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0, ba
                                     if vals:
                                         stage_analysis[stage][p_key]["accuracy"] = sum(vals) / len(vals)
                                         stage_analysis[stage][p_key]["std"] = np.std(vals) if len(vals) > 1 else 0
+                        
+                        judgment_str = ','.join(judgment_list)
+                        e1_str = ','.join(e1_list)
+                        e2_str = ','.join(e2_list)
+                        p_str = ','.join(p_list)
+                        s_str = ','.join(s_list)
 
                         # 构造完整的数据元组
                         full_game_data = (
                             global_idx, white_player, black_player, avg_cp_white, final_acc_white, 
                             avg_cp_black, final_acc_black, stage_analysis,
                             ','.join(evaluation_list),
-                            ','.join(judgment_list),
+                            judgment_str,
                             stats["white"]["Blunder"], stats["white"]["Mistake"], stats["white"]["Inaccuracy"],
                             stats["black"]["Blunder"], stats["black"]["Mistake"], stats["black"]["Inaccuracy"],
-                            ','.join(e1_list), ','.join(e2_list), ','.join(p_list), ','.join(s_list), 
-                            cum_s_white, cum_s_black
+                            e1_str, e2_str, p_str, s_str, cum_s_white, cum_s_black 
                         )
+
+                        # add to memory list
+                        all_games.append(full_game_data)
                         
                         # 实时写入硬盘 (核心防死机) ---
                         if csv_writer:
-                            csv_writer.writerow(list(full_game_data))
+                            # 准备写入 CSV 的列表 (将 dict 转换为 string)
+                            csv_row = list(full_game_data)
+                            csv_row[7] = str(stage_analysis) # 转换 stage_analysis 字典为字符串
+                            csv_writer.writerow(csv_row)
                             backup_file_handle.flush() # 强制刷入硬盘
                             os.fsync(backup_file_handle.fileno()) # 双重保险
 
-                        else:
-                            if csv_writer:
-                                csv_writer.writerow(list(empty_result))
+                        # 实时更新 JSON 状态 ---
+                        if status_json_path:
+                            current_uids_set.add(global_idx)
+                            with open(status_json_path, 'w') as f:
+                                json.dump(list(current_uids_set), f)
+                        # ----------------------------------------
+
+                        game_evaluations.append(','.join(evaluation_list)) 
+                        game_details.append({
+                            "row_idx": global_idx,
+                            "white_player": white_player,
+                            "black_player": black_player,
+                            "moves": move_details,
+                            "summary": {
+                                "white": {"cp_loss": avg_cp_white, "accuracy": final_acc_white, "stats": stats["white"], "complexity_S": cum_s_white},
+                                "black": {"cp_loss": avg_cp_black, "accuracy": final_acc_black, "stats": stats["black"], "complexity_S": cum_s_black}
+                            },
+                            "stage_analysis": stage_analysis
+                        })
+                    else:
+                        # 分析失败或无有效步数
+                        all_games.append(empty_result)
+                        skipped_indices.append(global_idx)
+                        
+                        # 即使失败，也标记为已处理
+                        if status_json_path:
+                            current_uids_set.add(global_idx)
+                            with open(status_json_path, 'w') as f: json.dump(list(current_uids_set), f)
 
                 except Exception as e:
-                    if is_verbose:print(f"Error in Game {global_idx}: {e}")
+                    if is_verbose:
+                        pbar.write(f"Game {global_idx+1}: Critical error: {str(e)[:100]}")
+                        traceback.print_exc()
+                    all_games.append(empty_result)
+                    skipped_indices.append(global_idx)
                     
-                    if csv_writer:csv_writer.writerow(list(empty_result))
+                    # 即使报错，也标记为已处理
+                    if status_json_path:
+                        current_uids_set.add(global_idx)
+                        with open(status_json_path, 'w') as f: json.dump(list(current_uids_set), f)
                 
-                del board, game_acc_white, game_acc_black, e1_list, e2_list
                 pbar.update(1)
+            
             pbar.close()
     
     finally:
+        # --- 🔥 [新增] 5. 清理文件句柄 ---
         if backup_file_handle:
             backup_file_handle.close()
-    return [], [], []
+
+    if skipped_indices and is_verbose:
+        print(f"\n跳过/分析失败的棋局数: {len(skipped_indices)}")
+    
+    return all_games, game_details, game_evaluations
 
 # @task(name='Process CSV Chunk',retries=0, log_prints=True)
 # ==========================================
 # 2. 单个进程的处理逻辑 (替换 process_chunk)
 # ==========================================
-# ==========================================
-# 3. 进程处理函数 (替换旧版本)
-# ==========================================
 def process_chunk(chunk_df, start_idx, engine_path, threads, depth, is_verbose, temp_csv_path, status_json_path):
     """
-    修改后的 process_chunk。
-    虽然参数里还有 status_json_path (为了兼容调用不报错)，但在内部不再使用它。
+    增加了 status_json_path 参数，用于保存断点续传状态到指定目录
     """
+    # 获取当前进程 Rank
     rank = MPI.COMM_WORLD.Get_rank()
     
     # 确保临时目录存在
     os.makedirs(os.path.dirname(temp_csv_path), exist_ok=True)
     chunk_df.to_csv(temp_csv_path, index=False)
-    
-    # 设定备份文件路径
     backup_csv_path = temp_csv_path.replace("temp_rank", "backup_results_rank")
+    processed_uids = set()
     
-    # 初始化引擎
+    # 初始化引擎 (注意这里加上了 multi_pv=2 参数以适配复杂度计算)
     engine = SimpleStockfishEngine(engine_path, threads, multi_pv=2)
+
     try:
-        # 调用核心逻辑
-        # 注意：这里不再传递 status_json_path，只传 backup_csv_path
-        process_csv_with_offset(temp_csv_path, engine, depth, is_verbose, start_idx,
-                                backup_csv_path=backup_csv_path)
+        # 调用核心分析逻辑
+        # 注意：process_csv_with_offset 内部逻辑不用变，它只负责计算和返回列表
+        all_games, game_details, game_evaluations = process_csv_with_offset(temp_csv_path, engine, depth, is_verbose, start_idx,
+                                                                            backup_csv_path = temp_csv_path.replace("temp_rank", "backup_results_rank"),
+                                                                            status_json_path=status_json_path)
+        print(f"[Rank {rank}] 本地处理完毕，games: {len(all_games)}, details: {len(game_details)}")
+
+        # 记录已处理的 UID
+        for game in all_games:
+            # 假设 game[0] 是 uid/索引
+            processed_uids.add(game[0])
+            
+        # 【关键修改】保存到指定的 status_json_path
+        save_processed_uids(processed_uids, status_json_path)
         
-        print(f"[Rank {rank}] 本地任务完成，结果已保存至 {backup_csv_path}")
-        return [], [], [] # 返回空
+        return all_games, game_details, game_evaluations
     
     except Exception as e:
-        print(f"[Rank {rank}] 进程分析失败: {e}")
-        traceback.print_exc()
+        print(f"[Rank {rank}] 分析失败: {e}")
+        traceback.print_exc() # 打印详细错误堆栈
         return [], [], []
     finally:
         engine.quit()
+        # 清理临时 CSV 文件 (保留 JSON 状态文件以便续传)
         if os.path.exists(temp_csv_path):
             try:
                 os.remove(temp_csv_path)
@@ -1380,3 +1438,4 @@ if __name__ == "__main__":
         print("="*40 + "\n")
 
 # mpiexec -n 8 python "C:\Users\Administrator\Desktop\Chess\complexity\try2.py"
+
