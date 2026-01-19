@@ -10,6 +10,7 @@ ELO/LSTM/*.keras
 # Data / outputs
 data/
 test/
+complexity/df_moves.csv
 
 # Jupyter Notebook checkpoints / temp files
 *.ipynb_checkpoints/
