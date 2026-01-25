@@ -1,6 +1,6 @@
 #
 import shutil
-
+import ast
 class ProjectConfig:
     """项目路径与配置管理"""
     def __init__(self, script_path, input_csv_path, output_filename, force_restart=False):
@@ -249,23 +249,34 @@ class FullLichessAnalyzer:
 
 #  lichess部分结束
 
-def get_eval_str(score, board):
-    """_summary_
-    Convert the chess evaluation into a readable string for people.
+def get_raw_score_value(score, board):
+    """
+    获取原始引擎分数 (ComplexityE)，逻辑完全对齐 get_eval_str。
+    """
+    raw_val = 0
+    
+    # 1. 先获取“相对于当前走棋方”的原始数值
+    if isinstance(score, chess.engine.Mate):
+        mate_steps = score.mate()
+        # 处理杀棋分数：
+        # mate_steps > 0 代表当前方赢 (比如 +1 代表当前方一步杀)
+        # 转化规则：越快赢分数越高 (10000 - steps)
+        if mate_steps > 0:
+            raw_val = 10000 - mate_steps
+        else:
+            # 负数代表当前方被杀 (比如 -1 代表当前方被一步杀)
+            raw_val = -10000 - mate_steps
+    else:
+        # CP 情况，直接拿整数
+        raw_val = score.score()
 
-    Args:
-        score (chess.engine.Mate & chess.engine.PovScore): the Evaluation
-              if mate evaluation: contains the move numbers to checkmate
-              if score evaluation: centipawn advantage/disadvantage
-        board (chess.Board): the current board state & 
-                             board.turn indicates who will move next True for white,False for black
+    # 2. 视角转换
+    if board.turn == chess.WHITE:
+        return raw_val
+    else:
+        return -raw_val
 
-    Returns:
-        str(the formatted evaluation result):
-             if Mate: a integer string
-             if Score: a float string with 2 demicals
-             positive for white has advantange
-    """    
+def get_eval_str(score, board):   
     #score is mate
     if isinstance(score, chess.engine.Mate):
         mate_value = score.mate()
@@ -596,8 +607,8 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0,
         
         if not file_exists:
             headers = [
-                "row_idx", "White", "Black", "White CP Loss", "White Accuracy", 
-                "Black CP Loss", "Black Accuracy", "Stage Analysis", "Evaluation", 
+                "row_idx","UID", "White", "Black", "White CP Loss", "White Accuracy", 
+                "Black CP Loss", "Black Accuracy", "Stage Analysis", "Evaluation", "ComplexityE", 
                 "Judgments", "White Blunders", "White Mistakes", "White Inaccuracies", 
                 "Black Blunders", "Black Mistakes", "Black Inaccuracies",
                 "Complexity E1", "Complexity E2", "Complexity P", "Complexity S", 
@@ -618,6 +629,11 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0,
             
             for local_idx, row in enumerate(rows):
                 global_idx = start_idx + local_idx
+                raw_uid = row.get('uid') or row.get('id')
+                if raw_uid:
+                    real_uid = raw_uid
+                else:
+                    real_uid = global_idx + 1
                 
                 # --- 断点跳过 ---
                 if global_idx in current_uids_set:
@@ -632,7 +648,7 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0,
                     pbar.set_description(f"Game {global_idx}: {white_player} vs {black_player}")
 
                 # 定义空结果 (用于报错时占位)
-                empty_result = (global_idx, white_player, black_player, None, None, None, None, None, None, None, 
+                empty_result = (global_idx, real_uid, white_player, black_player, None, None, None, None, None, None, None, None,
                                 0, 0, 0, 0, 0, 0, None, None, None, None, 0, 0)
                 
                 moves_str = row.get('Moves', '')
@@ -659,6 +675,7 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0,
                 game_cp_white, game_cp_black = 0, 0
                 game_win_chances = []
                 evaluation_list = []  
+                raw_eval_list = []
                 judgment_list = [] 
                 stats = {
                     "white": {'Blunder': 0, 'Mistake': 0, 'Inaccuracy': 0},
@@ -718,12 +735,15 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0,
                         score_obj_best = result_current["pv_scores"].get(1, chess.engine.Cp(0))
                         score_current = get_score_value(score_obj_best, board)
                         eval_str_current = get_eval_str(score_obj_best, board)
+
+                        raw_val_int = get_raw_score_value(score_obj_best, board)
+                        evaluation_list.append(eval_str_current)
+                        raw_eval_list.append(str(raw_val_int))
+
                         cp_curr, mate_curr, calc_curr = extract_white_relative_score(score_obj_best, board)
                         e1_obj = result_current["pv_scores"].get(1)
                         e2_obj = result_current["pv_scores"].get(2)
-                        
-                        evaluation_list.append(eval_str_current)
-                        
+                                                
                         # 准确率与Lichess判定
                         win_before_white = winning_chances_percent(score_before)
                         win_after_white = winning_chances_percent(score_current)
@@ -785,9 +805,10 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0,
                         }
                         
                         full_game_data = (
-                            global_idx, white_player, black_player, avg_cp_white, final_acc_white, 
+                            global_idx, real_uid, white_player, black_player, avg_cp_white, final_acc_white, 
                             avg_cp_black, final_acc_black, str(stage_analysis),
                             ','.join(evaluation_list),
+                            ','.join(raw_eval_list),
                             ','.join(judgment_list),
                             stats["white"]["Blunder"], stats["white"]["Mistake"], stats["white"]["Inaccuracy"],
                             stats["black"]["Blunder"], stats["black"]["Mistake"], stats["black"]["Inaccuracy"],
@@ -797,7 +818,6 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0,
                         
                         if csv_writer:
                             csv_writer.writerow(list(full_game_data))
-                            # 【关键】强制刷新
                             backup_file_handle.flush()
                             os.fsync(backup_file_handle.fileno())
                     else:
@@ -808,7 +828,7 @@ def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0,
                             os.fsync(backup_file_handle.fileno())
 
                 except Exception as e:
-                    # 【关键修复】捕获代码报错 (如 move_number 错误) 并写入空行
+                    # 捕获代码报错 (如 move_number 错误) 并写入空行
                     if is_verbose: print(f"Error in Game {global_idx}: {e}")
                     if csv_writer:
                         csv_writer.writerow(list(empty_result))
@@ -992,13 +1012,15 @@ def collect_results(original_df: pd.DataFrame, all_games_gathered: List, game_de
     print(f"[Rank {rank}] 合并后的游戏总数: {len(combined_games)}")
     
     # 1. 初始化所有列的列表 (长度与原始 DataFrame 一致)
+    uid_list = [None] * len(original_df)
     # --- 原有列 ---
     white_cp_loss_list = [None] * len(original_df)
     white_accuracy_list = [None] * len(original_df)
     black_cp_loss_list = [None] * len(original_df)
     black_accuracy_list = [None] * len(original_df)
     evaluation_list = [None] * len(original_df)
-    
+    raw_evaluation_list = [None] * len(original_df)
+
     # --- 阶段分析列 ---
     white_beginning_acc = [None] * len(original_df)
     white_beginning_std = [None] * len(original_df)
@@ -1020,6 +1042,7 @@ def collect_results(original_df: pd.DataFrame, all_games_gathered: List, game_de
     s_full_list = [None] * len(original_df)
     cum_s_white_list = [None] * len(original_df)
     cum_s_black_list = [None] * len(original_df)
+    stage_json_list=[None]*len(original_df)
     
     # --- 新增列：Lichess 判定与统计 ---
     judgments_list = [None] * len(original_df) # 存储判定序列字符串 (如 "Blunder...")
@@ -1040,8 +1063,8 @@ def collect_results(original_df: pd.DataFrame, all_games_gathered: List, game_de
     # 2. 遍历结果并填充列表
     for game in combined_games:
         # 解包元组 (注意：这里的顺序必须严格对应 process_csv_with_offset 中的 append 顺序)
-        (row_idx, white, black, avg_cp_white, acc_white, avg_cp_black, acc_black, 
-         stage_analysis, evaluation, 
+        (row_idx, real_uid, white, black, avg_cp_white, acc_white, avg_cp_black, acc_black, 
+         stage_analysis_str, evaluation, raw_eval_str,
          judgment_str,  # <--- 新增：判定序列
          w_blunder, w_mistake, w_inacc, # <--- 新增：白方统计
          b_blunder, b_mistake, b_inacc, # <--- 新增：黑方统计
@@ -1052,15 +1075,18 @@ def collect_results(original_df: pd.DataFrame, all_games_gathered: List, game_de
             print(f"[Rank {rank}] 警告: 无效的行索引 {row_idx}，跳过")
             continue
             
+        uid_list[row_idx] = real_uid
         # 填充原有数据
         white_cp_loss_list[row_idx] = avg_cp_white
         white_accuracy_list[row_idx] = acc_white
         black_cp_loss_list[row_idx] = avg_cp_black
         black_accuracy_list[row_idx] = acc_black
         evaluation_list[row_idx] = evaluation
+        raw_evaluation_list[row_idx] = raw_eval_str
         
         # 填充新增数据 (Lichess 相关)
         judgments_list[row_idx] = judgment_str
+        stage_json_list[row_idx] = stage_analysis_str
         
         w_blunder_list[row_idx] = w_blunder
         w_mistake_list[row_idx] = w_mistake
@@ -1078,20 +1104,24 @@ def collect_results(original_df: pd.DataFrame, all_games_gathered: List, game_de
         cum_s_black_list[row_idx] = cum_s_b
         
         # 填充阶段分析结果
-        if stage_analysis is not None:
-            white_beginning_acc[row_idx] = stage_analysis["beginning"]["white"]["accuracy"]
-            white_beginning_std[row_idx] = stage_analysis["beginning"]["white"]["std"]
-            white_middle_acc[row_idx] = stage_analysis["middle"]["white"]["accuracy"]
-            white_middle_std[row_idx] = stage_analysis["middle"]["white"]["std"]
-            white_endgame_acc[row_idx] = stage_analysis["endgame"]["white"]["accuracy"]
-            white_endgame_std[row_idx] = stage_analysis["endgame"]["white"]["std"]
+        if stage_analysis_str:
+            try:
+                sa=ast.literal_eval(stage_analysis_str)
+                white_beginning_acc[row_idx] = sa["beginning"]["white"]["accuracy"]
+                white_beginning_std[row_idx] = sa["beginning"]["white"]["std"]
+                white_middle_acc[row_idx] = sa["middle"]["white"]["accuracy"]
+                white_middle_std[row_idx] = sa["middle"]["white"]["std"]
+                white_endgame_acc[row_idx] = sa["endgame"]["white"]["accuracy"]
+                white_endgame_std[row_idx] = sa["endgame"]["white"]["std"]
             
-            black_beginning_acc[row_idx] = stage_analysis["beginning"]["black"]["accuracy"]
-            black_beginning_std[row_idx] = stage_analysis["beginning"]["black"]["std"]
-            black_middle_acc[row_idx] = stage_analysis["middle"]["black"]["accuracy"]
-            black_middle_std[row_idx] = stage_analysis["middle"]["black"]["std"]
-            black_endgame_acc[row_idx] = stage_analysis["endgame"]["black"]["accuracy"]
-            black_endgame_std[row_idx] = stage_analysis["endgame"]["black"]["std"]
+                black_beginning_acc[row_idx] = sa["beginning"]["black"]["accuracy"]
+                black_beginning_std[row_idx] = sa["beginning"]["black"]["std"]
+                black_middle_acc[row_idx] = sa["middle"]["black"]["accuracy"]
+                black_middle_std[row_idx] = sa["middle"]["black"]["std"]
+                black_endgame_acc[row_idx] = sa["endgame"]["black"]["accuracy"]
+                black_endgame_std[row_idx] = sa["endgame"]["black"]["std"]
+            except:
+                pass
         
         # 只统计有效对局 (用于最后的 Summary 打印)
         if avg_cp_white is not None and acc_white is not None:
@@ -1102,11 +1132,13 @@ def collect_results(original_df: pd.DataFrame, all_games_gathered: List, game_de
             total_acc_black += acc_black
     
     # 3. 将列表赋值给 DataFrame 的列
+    original_df.insert(0, 'UID', uid_list)
     original_df['White CP Loss'] = white_cp_loss_list
     original_df['White Accuracy'] = white_accuracy_list
     original_df['Black CP Loss'] = black_cp_loss_list
     original_df['Black Accuracy'] = black_accuracy_list
     original_df['Evaluation'] = evaluation_list
+    original_df['ComplexityE'] = raw_evaluation_list
     
     # --- 新增列赋值 ---
     original_df['Judgments'] = judgments_list
