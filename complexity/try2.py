@@ -444,13 +444,13 @@ class SimpleStockfishEngine:
             lines.append(line)
         return lines
     
-    def analyse(self, board, depth=16):
+    def analyse(self, board, depth=20):
         """_summary_
         analyze current board position and return dict with position score and best moves
 
         Args:
             board (_type_): chess.Board represents current position
-            depth (int, optional): moves to look ahead. Defaults to 16.
+            depth (int, optional): moves to look ahead. Defaults to 20.
 
         Returns:
             'score': postion score(CP/Mate)
@@ -502,7 +502,7 @@ class SimpleStockfishEngine:
     def set_fen_position(self,fen):
         self._send_command(f"position fen {fen}")
 
-    def get_evaluation(self, depth=10):
+    def get_evaluation(self, depth=20):
         """_summary_
         quick evaluation of current position
 
@@ -1224,7 +1224,7 @@ def analyze_chess_games(
     csv_file_path: str, 
     engine_path: str, 
     threads: int = 1, 
-    depth: int = 16, 
+    depth: int = 20, 
     is_verbose: bool = False,
     output_dir: str = "./output",
     output_filename: str = "analysis_results.csv"
@@ -1332,7 +1332,7 @@ if __name__ == "__main__":
     INPUT_CSV =r"C:\Users\Administrator\Desktop\Chess\data\input\100wuid.csv"
     ENGINE_PATH =r"C:\Users\Administrator\Desktop\stockfish-windows-x86-64-avx2\stockfish\stockfish-windows-x86-64-avx2.exe"
     THREADS = 1  
-    DEPTH = 16  
+    DEPTH = 20  
     IS_VERBOSE = True
     OUTPUT_FILENAME = "100w_OPTIMIZED.csv"
     FORCE_RESTART=False #强制重跑写true  断点继续写false
