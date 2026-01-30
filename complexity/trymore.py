@@ -1,3 +1,4 @@
+# top-5 best moves and the real move's score from the stockfish
 #
 import shutil
 import ast
@@ -169,6 +170,7 @@ class ComplexityAnalyzer:
         Convert chess.engine.Score to numeric CP for complexity calculation.
         Ensure returns Side-To-Move perspective (Standard UCI behavior).
         """
+        if score_obj is None: return None
         if isinstance(score_obj, chess.engine.Mate):
             mate_steps = score_obj.mate()
             # Positive mate means current side wins
@@ -391,7 +393,7 @@ class SimpleStockfishEngine:
     position evaluation
     process management
     """     
-    def __init__(self, engine_path, threads=1, multi_pv=2):
+    def __init__(self, engine_path, threads=1, multi_pv=5):
         """_summary_
         initialize and launch Stockfish engine process
         perform uci handshake, set computation threads
@@ -444,7 +446,7 @@ class SimpleStockfishEngine:
             lines.append(line)
         return lines
     
-    def analyse(self, board, depth=18):
+    def analyse(self, board, depth=16):
         """_summary_
         analyze current board position and return dict with position score and best moves
 
@@ -502,7 +504,7 @@ class SimpleStockfishEngine:
     def set_fen_position(self,fen):
         self._send_command(f"position fen {fen}")
 
-    def get_evaluation(self, depth=18):
+    def get_evaluation(self, depth=16):
         """_summary_
         quick evaluation of current position
 
@@ -575,277 +577,164 @@ def get_score_value(score, board, mate_score=1000):
     return value
 
 
-def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0, 
-                            backup_csv_path=None):
-    """
-    全功能修复版：
-    1. 修复了 move_number 未初始化的报错。
-    2. 增加了异常发生时的强制硬盘写入(flush/fsync)，防止死循环。
-    3. 移除内存堆积逻辑，防止 OOM。
-    """    
+def process_csv_with_offset(csv_file, engine, depth, is_verbose, start_idx=0, backup_csv_path=None):
+    rank = MPI.COMM_WORLD.Get_rank()
     lichess_analyzer = FullLichessAnalyzer()
     complexity_analyzer = ComplexityAnalyzer(delta_0=10.0)
     
-    # 1. 读取断点
-    current_uids_set = set()
-    if backup_csv_path:
-        current_uids_set = get_processed_uids_from_csv(backup_csv_path)
-        if len(current_uids_set) > 0 and is_verbose:
-            print(f"检测到断点文件，已跳过 {len(current_uids_set)} 局")
+    current_uids_set = get_processed_uids_from_csv(backup_csv_path) if backup_csv_path else set()
 
-    # 2. 准备文件写入
     backup_file_handle = None
     csv_writer = None
-    
     if backup_csv_path:
-        # 检测是否需要写表头
         file_exists = os.path.isfile(backup_csv_path) and os.path.getsize(backup_csv_path) > 0
-        
-        # 使用行缓冲 buffering=1
         backup_file_handle = open(backup_csv_path, 'a', newline='', encoding='utf-8', buffering=1)
         csv_writer = csv.writer(backup_file_handle)
-        
         if not file_exists:
             headers = [
                 "row_idx","UID", "White", "Black", "White CP Loss", "White Accuracy", 
                 "Black CP Loss", "Black Accuracy", "Stage Analysis", "Evaluation", "ComplexityE", 
                 "Judgments", "White Blunders", "White Mistakes", "White Inaccuracies", 
                 "Black Blunders", "Black Mistakes", "Black Inaccuracies",
-                "Complexity E1", "Complexity E2", "Complexity P", "Complexity S", 
-                "White Complexity Sum", "Black Complexity Sum"
+                "Complexity E1", "Complexity E2", "Complexity E3", "Complexity E4", "Complexity E5", 
+                "Complexity P", "Complexity S", "White Complexity Sum", "Black Complexity Sum"
             ]
             csv_writer.writerow(headers)
-            backup_file_handle.flush()
 
     try:
         with open(csv_file, 'r', newline='', encoding='utf-8') as file:
-            first_line = file.readline().strip()
-            file.seek(0)
-            delimiter = '\t' if '\t' in first_line else ','
-            csv_reader = csv.DictReader(file, delimiter=delimiter)
+            csv_reader = csv.DictReader(file)
             rows = list(csv_reader)
-            
-            pbar = tqdm.tqdm(total=len(rows), desc="处理进度", disable=not is_verbose)
+            pbar = tqdm.tqdm(total=len(rows), desc=f"Rank {rank}", disable=(not is_verbose or rank != 0))
             
             for local_idx, row in enumerate(rows):
                 global_idx = start_idx + local_idx
-                raw_uid = row.get('uid') or row.get('id')
-                if raw_uid:
-                    real_uid = raw_uid
-                else:
-                    real_uid = global_idx + 1
-                
-                # --- 断点跳过 ---
                 if global_idx in current_uids_set:
-                    pbar.update(1)
-                    continue
+                    pbar.update(1); continue
                 
-                # --- 基础信息 ---
+                # 初始化单局变量
                 white_player = row.get('White', 'Unknown')
                 black_player = row.get('Black', 'Unknown')
+                real_uid = row.get('uid') or row.get('id') or (global_idx + 1)
                 
-                if is_verbose:
-                    pbar.set_description(f"Game {global_idx}: {white_player} vs {black_player}")
-
-                # 定义空结果 (用于报错时占位)
-                empty_result = (global_idx, real_uid, white_player, black_player, None, None, None, None, None, None, None, None,
-                                0, 0, 0, 0, 0, 0, None, None, None, None, 0, 0)
-                
-                moves_str = row.get('Moves', '')
-                
-                # 检查空棋谱或非法格式
-                if not moves_str:
-                    if csv_writer:
-                        csv_writer.writerow(list(empty_result))
-                        backup_file_handle.flush() # 即使是空也要写入
-                    pbar.update(1)
-                    continue
-                
-                moves_list = moves_str.split(',')
-                # 简单过滤非法移动
-                if any(m.strip() and (len(m.strip()) < 4 or len(m.strip()) > 5) for m in moves_list):
-                    if csv_writer:
-                        csv_writer.writerow(list(empty_result))
-                        backup_file_handle.flush()
-                    pbar.update(1)
-                    continue
-
-                # --- 变量初始化 ---
-                game_acc_white, game_acc_black = [], []
-                game_cp_white, game_cp_black = 0, 0
-                game_win_chances = []
-                evaluation_list = []  
-                raw_eval_list = []
-                judgment_list = [] 
+                # 统计累加器
+                game_acc_white, game_acc_black, game_win_chances = [], [], []
+                game_cp_white, game_cp_black = 0.0, 0.0
+                evaluation_list, raw_eval_list, judgment_list = [], [], []
                 stats = {
                     "white": {'Blunder': 0, 'Mistake': 0, 'Inaccuracy': 0},
                     "black": {'Blunder': 0, 'Mistake': 0, 'Inaccuracy': 0}
                 }
-                e1_list, e2_list, p_list, s_list = [], [], [], []
+                e1_l, e2_l, e3_l, e4_l, e5_l, p_l, s_l = [], [], [], [], [], [], []
                 cum_s_white, cum_s_black = 0.0, 0.0
-
+                
                 board = chess.Board()
-                
-                # 【关键修复】初始化 move_number
-                move_number = 1  
-                
                 analysis_success = True
-                
+
                 try:
-                    # 1. 初始局面分析
-                    result_current = engine.analyse(board, depth)
-                    score_obj_best = result_current["pv_scores"].get(1, chess.engine.Cp(0))
-                    e1_obj = result_current["pv_scores"].get(1)
-                    e2_obj = result_current["pv_scores"].get(2)
+                    # 1. 初始局面分析 (Ply 0)
+                    initial_res = engine.analyse(board, depth)
+                    curr_pvs_objs = [initial_res["pv_scores"].get(i) for i in range(1, 6)]
+                    score_obj_best = initial_res["pv_scores"].get(1, chess.engine.Cp(0))
                     
                     score_current = get_score_value(score_obj_best, board)
                     cp_curr, mate_curr, calc_curr = extract_white_relative_score(score_obj_best, board)
+
+                    moves_list = [m.strip() for m in row.get('Moves', '').split(',') if m.strip()]
                     
-                    # 2. 遍历每一步
                     for move_str in moves_list:
-                        move_str = move_str.strip()
-                        if not move_str: continue
-                        
-                        # 状态保存
                         score_before = score_current
                         cp_prev, mate_prev, calc_prev = cp_curr, mate_curr, calc_curr
                         
-                        # 复杂度计算
-                        is_white_turn = board.turn 
-                        e1_val = complexity_analyzer.score_to_cp(e1_obj)
-                        e2_val = complexity_analyzer.score_to_cp(e2_obj) if e2_obj else None
-                        delta, p_opt, entropy = complexity_analyzer.calculate_metrics(e1_val, e2_val)
+                        # A. 提取走子前的 E1-E5 (白方视角)
+                        w_view = []
+                        for obj in curr_pvs_objs:
+                            val = complexity_analyzer.score_to_cp(obj)
+                            if val is not None:
+                                v = val if board.turn == chess.WHITE else -val
+                                w_view.append(v)
+                            else: w_view.append(None)
                         
-                        e1_list.append(str(e1_val))
-                        e2_list.append(str(e2_val) if e2_val is not None else "inf")
-                        p_list.append(f"{p_opt:.3f}")
-                        s_list.append(f"{entropy:.3f}")
-                        
-                        if is_white_turn: cum_s_white += entropy
+                        e1_l.append(str(w_view[0]) if w_view[0] is not None else "")
+                        e2_l.append(str(w_view[1]) if w_view[1] is not None else "")
+                        e3_l.append(str(w_view[2]) if w_view[2] is not None else "")
+                        e4_l.append(str(w_view[3]) if w_view[3] is not None else "")
+                        e5_l.append(str(w_view[4]) if w_view[4] is not None else "")
+
+                        # B. 复杂度计算 (基于相对当前走棋方的分值)
+                        e1_rel = complexity_analyzer.score_to_cp(curr_pvs_objs[0])
+                        e2_rel = complexity_analyzer.score_to_cp(curr_pvs_objs[1])
+                        delta, p_opt, entropy = complexity_analyzer.calculate_metrics(e1_rel, e2_rel)
+                        p_l.append(f"{p_opt:.3f}")
+                        s_l.append(f"{entropy:.3f}")
+                        if board.turn == chess.WHITE: cum_s_white += entropy
                         else: cum_s_black += entropy
 
-                        # 走棋
+                        # C. 走子
                         move = chess.Move.from_uci(move_str)
-                        if move not in board.legal_moves:
-                            analysis_success = False; break
+                        if move not in board.legal_moves: analysis_success = False; break
                         board.push(move)
+
+                        # D. 分析新局面
+                        res = engine.analyse(board, depth)
+                        curr_pvs_objs = [res["pv_scores"].get(i) for i in range(1, 6)]
+                        score_obj_best = res["pv_scores"].get(1, chess.engine.Cp(0))
                         
-                        # 新局面分析
-                        result_current = engine.analyse(board, depth)
-                        score_obj_best = result_current["pv_scores"].get(1, chess.engine.Cp(0))
                         score_current = get_score_value(score_obj_best, board)
-                        eval_str_current = get_eval_str(score_obj_best, board)
-
-                        raw_val_int = get_raw_score_value(score_obj_best, board)
-                        evaluation_list.append(eval_str_current)
-                        raw_eval_list.append(str(raw_val_int))
-
+                        evaluation_list.append(get_eval_str(score_obj_best, board))
+                        raw_eval_list.append(str(get_raw_score_value(score_obj_best, board)))
                         cp_curr, mate_curr, calc_curr = extract_white_relative_score(score_obj_best, board)
-                        e1_obj = result_current["pv_scores"].get(1)
-                        e2_obj = result_current["pv_scores"].get(2)
-                                                
-                        # 准确率与Lichess判定
-                        win_before_white = winning_chances_percent(score_before)
-                        win_after_white = winning_chances_percent(score_current)
-                        game_win_chances.append(win_after_white)
-                        
-                        if board.turn == chess.WHITE: # 黑方刚走完
-                            is_white_move_finished = False
-                            win_before = 100 - win_before_white
-                            win_after = 100 - win_after_white
-                        else: # 白方刚走完
-                            is_white_move_finished = True
-                            win_before = win_before_white
-                            win_after = win_after_white
-                            
-                        accuracy = move_accuracy_percent(win_before, win_after)
-                        judgment = lichess_analyzer.get_judgment(
-                            cp_prev, mate_prev, calc_prev, 
-                            cp_curr, mate_curr, calc_curr, 
-                            is_white_move_finished
-                        )
-                        judgment_list.append(judgment)
-                        
-                        player_key = "white" if is_white_move_finished else "black"
-                        if judgment in ["Blunder", "Mistake", "Inaccuracy"]:
-                            stats[player_key][judgment] += 1
-                            
-                        if is_white_move_finished:  
-                            cp_loss = 0 if score_current > score_before else score_before - score_current
-                            game_cp_white += cp_loss
-                            game_acc_white.append(accuracy)
-                        else:  
-                            cp_loss = 0 if score_current < score_before else score_current - score_before
-                            game_cp_black += cp_loss
-                            game_acc_black.append(accuracy)
-                        
-                        if board.turn == chess.WHITE:
-                            move_number += 1
 
-                    # 3. 汇总数据并写入
-                    if analysis_success and (game_acc_white or game_acc_black):
-                        # 计算统计值
-                        avg_cp_white = game_cp_white / len(game_acc_white) if game_acc_white else None
-                        avg_cp_black = game_cp_black / len(game_acc_black) if game_acc_black else None
+                        # E. 判定与准确率 (找回你的 Blunder 统计)
+                        is_w_finished = not board.turn # 刚走完棋的一方
+                        win_before_w = winning_chances_percent(score_before)
+                        win_after_w = winning_chances_percent(score_current)
+                        game_win_chances.append(win_after_w)
                         
-                        h_white = harmonic_mean(game_acc_white) if game_acc_white else None
-                        w_white = volatility_weighted_mean(game_acc_white, game_win_chances, True) if game_acc_white else None
-                        final_acc_white = (h_white + w_white) / 2 if h_white is not None and w_white is not None else None
+                        acc = move_accuracy_percent(win_before_w if is_w_finished else 100-win_before_w, 
+                                                   win_after_w if is_w_finished else 100-win_after_w)
+                        judg = lichess_analyzer.get_judgment(cp_prev, mate_prev, calc_prev, cp_curr, mate_curr, calc_curr, is_w_finished)
+                        judgment_list.append(judg)
                         
-                        h_black = harmonic_mean(game_acc_black) if game_acc_black else None
-                        w_black = volatility_weighted_mean(game_acc_black, game_win_chances, False) if game_acc_black else None
-                        final_acc_black = (h_black + w_black) / 2 if h_black is not None and w_black is not None else None
+                        pk = "white" if is_w_finished else "black"
+                        if judg in stats[pk]: stats[pk][judg] += 1
+                        
+                        if is_w_finished:
+                            game_acc_white.append(acc)
+                            # CP Loss 计算: 如果局面变差了，记录差值
+                            loss = max(0, score_before - score_current)
+                            game_cp_white += loss
+                        else:
+                            game_acc_black.append(acc)
+                            loss = max(0, score_current - score_before)
+                            game_cp_black += loss
 
-                        # 阶段分析 (简化占位，确保写入)
-                        # 为了避免代码过长，这里保留基础结构，实际逻辑在内存计算即可
-                        stage_analysis = {
-                            "beginning": {"white": {"accuracy": None, "std": None}, "black": {"accuracy": None, "std": None}},
-                            "middle": {"white": {"accuracy": None, "std": None}, "black": {"accuracy": None, "std": None}},
-                            "endgame": {"white": {"accuracy": None, "std": None}, "black": {"accuracy": None, "std": None}}
-                        }
-                        
+                    # 2. 汇总写入 (恢复 CP Loss 和 Accuracy)
+                    if analysis_success:
+                        avg_cp_w = game_cp_white / len(game_acc_white) if game_acc_white else 0
+                        avg_cp_b = game_cp_black / len(game_acc_black) if game_acc_black else 0
+                        acc_w_final = sum(game_acc_white)/len(game_acc_white) if game_acc_white else 0
+                        acc_b_final = sum(game_acc_black)/len(game_acc_black) if game_acc_black else 0
+
                         full_game_data = (
-                            global_idx, real_uid, white_player, black_player, avg_cp_white, final_acc_white, 
-                            avg_cp_black, final_acc_black, str(stage_analysis),
-                            ','.join(evaluation_list),
-                            ','.join(raw_eval_list),
-                            ','.join(judgment_list),
+                            global_idx, real_uid, white_player, black_player, 
+                            f"{avg_cp_w:.1f}", f"{acc_w_final:.1f}", 
+                            f"{avg_cp_b:.1f}", f"{acc_b_final:.1f}",
+                            "{}", ','.join(evaluation_list), ','.join(raw_eval_list), ','.join(judgment_list),
                             stats["white"]["Blunder"], stats["white"]["Mistake"], stats["white"]["Inaccuracy"],
                             stats["black"]["Blunder"], stats["black"]["Mistake"], stats["black"]["Inaccuracy"],
-                            ','.join(e1_list), ','.join(e2_list), ','.join(p_list), ','.join(s_list), 
-                            cum_s_white, cum_s_black 
+                            ','.join(e1_l), ','.join(e2_l), ','.join(e3_l), ','.join(e4_l), ','.join(e5_l),
+                            ','.join(p_l), ','.join(s_l), cum_s_white, cum_s_black
                         )
-                        
-                        if csv_writer:
-                            csv_writer.writerow(list(full_game_data))
-                            backup_file_handle.flush()
-                            os.fsync(backup_file_handle.fileno())
-                    else:
-                        # 分析逻辑失败
-                        if csv_writer:
-                            csv_writer.writerow(list(empty_result))
-                            backup_file_handle.flush()
-                            os.fsync(backup_file_handle.fileno())
-
+                        csv_writer.writerow(list(full_game_data))
+                        backup_file_handle.flush()
+                
                 except Exception as e:
-                    # 捕获代码报错 (如 move_number 错误) 并写入空行
                     if is_verbose: print(f"Error in Game {global_idx}: {e}")
-                    if csv_writer:
-                        csv_writer.writerow(list(empty_result))
-                        backup_file_handle.flush() # 强制写入，防止死循环
-                        os.fsync(backup_file_handle.fileno())
-                
-                # 清理内存
-                del board, game_acc_white, game_acc_black, e1_list, e2_list
                 pbar.update(1)
-                
             pbar.close()
-
     finally:
-        if backup_file_handle:
-            backup_file_handle.close()
-            
-    # 返回空列表，完全依赖文件系统
+        if backup_file_handle: backup_file_handle.close()
     return [], [], []
 
 # @task(name='Process CSV Chunk',retries=0, log_prints=True)
@@ -870,7 +759,7 @@ def process_chunk(chunk_df, start_idx, engine_path, threads, depth, is_verbose, 
     backup_csv_path = temp_csv_path.replace("temp_rank", "backup_results_rank")
     
     # 初始化引擎
-    engine = SimpleStockfishEngine(engine_path, threads, multi_pv=2)
+    engine = SimpleStockfishEngine(engine_path, threads, multi_pv=5)
     try:
         # 调用核心逻辑
         # 注意：这里不再传递 status_json_path，只传 backup_csv_path
@@ -941,7 +830,7 @@ def distribute_data(csv_file_path: str, status_dir: str) -> Tuple[pd.DataFrame, 
         print(f"[Rank {rank}] 读取CSV文件: {csv_file_path}")
         original_df = pd.read_csv(csv_file_path)
         
-        # --- 🔥 修改点：这里不要过滤，直接用全量数据切分 ---
+        # --- 这里不要过滤，直接用全量数据切分 ---
         # 之前的 filter_unprocessed_uids 在这里删掉了
         # -----------------------------------------------
         
@@ -977,7 +866,6 @@ def distribute_data(csv_file_path: str, status_dir: str) -> Tuple[pd.DataFrame, 
         return None, None
 
 
-# @task(name="Collect Results")
 def collect_results(original_df: pd.DataFrame, all_games_gathered: List, game_details_gathered: List, 
                    game_evaluations_gathered: List) -> Tuple[Dict, pd.DataFrame]:
     """gather all ranks' analysis results
@@ -1038,6 +926,10 @@ def collect_results(original_df: pd.DataFrame, all_games_gathered: List, game_de
 
     e1_full_list = [None] * len(original_df)
     e2_full_list = [None] * len(original_df)
+    e3_full_list = [None] * len(original_df)
+    e4_full_list = [None] * len(original_df)
+    e5_full_list = [None] * len(original_df)
+
     p_full_list = [None] * len(original_df)
     s_full_list = [None] * len(original_df)
     cum_s_white_list = [None] * len(original_df)
@@ -1068,7 +960,8 @@ def collect_results(original_df: pd.DataFrame, all_games_gathered: List, game_de
          judgment_str,  # <--- 新增：判定序列
          w_blunder, w_mistake, w_inacc, # <--- 新增：白方统计
          b_blunder, b_mistake, b_inacc, # <--- 新增：黑方统计
-         e1_str, e2_str, p_str, s_str, cum_s_w, cum_s_b
+         e1_str, e2_str, e3_str, e4_str, e5_str,
+         p_str, s_str, cum_s_w, cum_s_b
         ) = game
         
         if row_idx < 0 or row_idx >= len(original_df):
@@ -1098,6 +991,10 @@ def collect_results(original_df: pd.DataFrame, all_games_gathered: List, game_de
 
         e1_full_list[row_idx] = e1_str
         e2_full_list[row_idx] = e2_str
+        e3_full_list[row_idx] = e3_str
+        e4_full_list[row_idx] = e4_str
+        e5_full_list[row_idx] = e5_str
+
         p_full_list[row_idx] = p_str
         s_full_list[row_idx] = s_str
         cum_s_white_list[row_idx] = cum_s_w
@@ -1168,6 +1065,10 @@ def collect_results(original_df: pd.DataFrame, all_games_gathered: List, game_de
 
     original_df['Complexity E1'] = e1_full_list
     original_df['Complexity E2'] = e2_full_list
+    original_df['Complexity E3'] = e3_full_list
+    original_df['Complexity E4'] = e4_full_list
+    original_df['Complexity E5'] = e5_full_list
+
     original_df['Complexity P'] = p_full_list
     original_df['Complexity S'] = s_full_list
     original_df['White Complexity Sum'] = cum_s_white_list
@@ -1224,7 +1125,7 @@ def analyze_chess_games(
     csv_file_path: str, 
     engine_path: str, 
     threads: int = 1, 
-    depth: int =18, 
+    depth: int =16, 
     is_verbose: bool = False,
     output_dir: str = "./output",
     output_filename: str = "analysis_results.csv"
@@ -1332,10 +1233,10 @@ if __name__ == "__main__":
     INPUT_CSV =r"C:\Users\Administrator\Desktop\Chess\data\input\100wuid.csv"
     ENGINE_PATH =r"C:\Users\Administrator\Desktop\stockfish-windows-x86-64-avx2\stockfish\stockfish-windows-x86-64-avx2.exe"
     THREADS = 1  
-    DEPTH = 18  
+    DEPTH = 16  
     IS_VERBOSE = True
     OUTPUT_FILENAME = "100w_OPTIMIZED.csv"
-    FORCE_RESTART=False #强制重跑写true  断点继续写false
+    FORCE_RESTART=True #强制重跑写true  断点继续写false
     
     config=ProjectConfig(__file__, INPUT_CSV, OUTPUT_FILENAME, FORCE_RESTART)
     comm = MPI.COMM_WORLD
@@ -1362,4 +1263,4 @@ if __name__ == "__main__":
         print(f"断点状态: {config.status_dir}")
         print("="*40 + "\n")
 
-# mpiexec -n 8 python "C:\Users\Administrator\Desktop\Chess\complexity\try2.py"
+# mpiexec -n 8 python "C:\Users\Administrator\Desktop\Chess\complexity\trymore.py"
