@@ -1236,7 +1236,7 @@ if __name__ == "__main__":
     DEPTH = 16  
     IS_VERBOSE = True
     OUTPUT_FILENAME = "100w_OPTIMIZED.csv"
-    FORCE_RESTART=True #强制重跑写true  断点继续写false
+    FORCE_RESTART=False #强制重跑写true  断点继续写false
     
     config=ProjectConfig(__file__, INPUT_CSV, OUTPUT_FILENAME, FORCE_RESTART)
     comm = MPI.COMM_WORLD
