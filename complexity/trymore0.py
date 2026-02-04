@@ -1224,80 +1224,23 @@ def analyze_chess_games(
     else:
         return None, None, None
 
-from pathlib import Path
-import sys
-import os
-
-# ... (你的其他函数保持不变) ...
-
 if __name__ == "__main__":
     """
-    Coordinates the main entry point for distributed analysis of chess games from a CSV file.
-    Automatically adapts paths for Windows (Local) and Linux (HPC).
-    """
-    
-    # ================= 1. 智能路径定位 (核心部分) =================
-    # 获取当前脚本 (trymore.py) 所在的文件夹: .../Chess/complexity
-    SCRIPT_DIR = Path(__file__).resolve().parent
-    
-    # 获取项目根目录 (往上跳一级): .../Chess
-    PROJECT_ROOT = SCRIPT_DIR.parent
-    
-    # 设定数据目录: .../Chess/data/input/100wuid.csv
-    # (pathlib 会自动处理 Windows的 \ 和 Linux的 / )
-    INPUT_CSV_PATH = PROJECT_ROOT / "data" / "input" / "100wuid.csv"
-
-    # ================= 2. 环境适配 =================
-    if sys.platform.startswith('win'):
-        # --- Windows 本地配置 ---
-        print(f"[System] Mode: Windows Local")
-        
-        # 引擎：因为你的引擎在桌面另一个文件夹，不在 Chess 项目里，所以这里还得用绝对路径
-        # (如果你把引擎也放进 Chess 文件夹，这里也可以变成相对路径)
-        ENGINE_PATH = r"C:\Users\Administrator\Desktop\stockfish-windows-x86-64-avx2\stockfish\stockfish-windows-x86-64-avx2.exe"
-        
-        # Windows 异步修复
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        
-        # 将 Path 对象转为字符串 (防止某些老库不识别 Path 对象)
-        INPUT_CSV = str(INPUT_CSV_PATH)
-        IS_VERBOSE = True
-
-    else:
-        # --- Linux HPC 配置 ---
-        print(f"[System] Mode: Linux HPC")
-        
-        # 引擎：在 HPC 上，你需要把 Linux 版引擎放在 Chess/engines/ 文件夹下
-        # 路径自动变为: .../Chess/engines/stockfish
-        ENGINE_PATH_OBJ = PROJECT_ROOT / "engines" / "stockfish"
-        ENGINE_PATH = str(ENGINE_PATH_OBJ)
-        
-        # 自动给引擎赋予执行权限 (避免 Permission denied)
-        if os.path.exists(ENGINE_PATH):
-            os.chmod(ENGINE_PATH, 0o755)
-            
-        # 路径转字符串
-        INPUT_CSV = str(INPUT_CSV_PATH)
-        
-        # HPC 上通常关闭详细日志以节省空间
-        IS_VERBOSE = False
-
-    # ================= 3. 通用配置 =================
+    Coordinates the main entry point for distributed analysis of chess games from a CSV file,
+    utilizing MPI for parallel processing. The analysis includes engine evaluations,
+    accuracy calculations, and phase-based performance metrics.
+    """    
+    INPUT_CSV =r"C:\Users\Administrator\Desktop\Chess\data\input\100wuid.csv"
+    ENGINE_PATH =r"C:\Users\Administrator\Desktop\stockfish-windows-x86-64-avx2\stockfish\stockfish-windows-x86-64-avx2.exe"
     THREADS = 1  
     DEPTH = 16  
+    IS_VERBOSE = True
     OUTPUT_FILENAME = "100w_OPTIMIZED.csv"
-    FORCE_RESTART = False 
-
-    # 打印一下路径，让你运行的时候确信它找对了
-    print(f"[System] Project Root: {PROJECT_ROOT}")
-    print(f"[System] Input CSV:    {INPUT_CSV}")
-    print(f"[System] Engine Path:  {ENGINE_PATH}")
-
-    # ================= 4. 启动程序 =================
-    config = ProjectConfig(__file__, INPUT_CSV, OUTPUT_FILENAME, FORCE_RESTART)
+    FORCE_RESTART=False #强制重跑写true  断点继续写false
+    
+    config=ProjectConfig(__file__, INPUT_CSV, OUTPUT_FILENAME, FORCE_RESTART)
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
-    
     config.setup_directories(rank)
     comm.Barrier()
 
@@ -1307,15 +1250,17 @@ if __name__ == "__main__":
         threads=THREADS,
         depth=DEPTH,
         is_verbose=IS_VERBOSE,
-        output_dir=config.output_dir, 
+        output_dir=config.output_dir, # 传入统一管理的输出目录
         output_filename=OUTPUT_FILENAME
     )
 
+    # 只有主进程会进入这里
     if rank == 0 and output_path:
         print(f"\n" + "="*40)
         print(f"分析流程结束")
         print(f"结果文件: {output_path}")
         print(f"中间文件: {config.temp_dir}")
+        print(f"断点状态: {config.status_dir}")
         print("="*40 + "\n")
 
 # mpiexec -n 8 python "C:\Users\Administrator\Desktop\Chess\complexity\trymore.py"

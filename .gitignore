@@ -13,6 +13,7 @@ test/
 complexity/df_moves.csv
 
 data - try2-rename/
+data -trymore/
 
 # Jupyter Notebook checkpoints / temp files
 *.ipynb_checkpoints/

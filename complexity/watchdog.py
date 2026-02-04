@@ -7,7 +7,7 @@ cmd = [
     "mpiexec", 
     "-n", "8", 
     "python", 
-    r"C:\Users\Administrator\Desktop\Chess\complexity\trymore.py"
+    r"C:\Users\Administrator\Desktop\Chess\complexity\try2.py"
 ]
 
 print("开始自动监控运行...")
