@@ -446,7 +446,7 @@ class SimpleStockfishEngine:
             lines.append(line)
         return lines
     
-    def analyse(self, board, depth=16):
+    def analyse(self, board, depth=18):
         """_summary_
         analyze current board position and return dict with position score and best moves
 
@@ -504,7 +504,7 @@ class SimpleStockfishEngine:
     def set_fen_position(self,fen):
         self._send_command(f"position fen {fen}")
 
-    def get_evaluation(self, depth=16):
+    def get_evaluation(self, depth=18):
         """_summary_
         quick evaluation of current position
 
@@ -1125,7 +1125,7 @@ def analyze_chess_games(
     csv_file_path: str, 
     engine_path: str, 
     threads: int = 1, 
-    depth: int =16, 
+    depth: int =18, 
     is_verbose: bool = False,
     output_dir: str = "./output",
     output_filename: str = "analysis_results.csv"
@@ -1243,9 +1243,9 @@ if __name__ == "__main__":
     # 获取项目根目录 (往上跳一级): .../Chess
     PROJECT_ROOT = SCRIPT_DIR.parent
     
-    # 设定数据目录: .../Chess/data/input/100wuid.csv
+    # 设定数据目录: .../Chess/data/input/...csv
     # (pathlib 会自动处理 Windows的 \ 和 Linux的 / )
-    INPUT_CSV_PATH = PROJECT_ROOT / "data" / "input" / "100wuid.csv"
+    INPUT_CSV_PATH = PROJECT_ROOT / "data" / "processed" / "remaining"/"remain_for_local"/"local_split"/"friend_task_part_1.csv"
 
     # ================= 2. 环境适配 =================
     if sys.platform.startswith('win'):
@@ -1284,8 +1284,8 @@ if __name__ == "__main__":
 
     # ================= 3. 通用配置 =================
     THREADS = 1  
-    DEPTH = 16  
-    OUTPUT_FILENAME = "100w_OPTIMIZED.csv"
+    DEPTH = 18  
+    OUTPUT_FILENAME = "local_part1.csv"
     FORCE_RESTART = False 
 
     # 打印一下路径，让你运行的时候确信它找对了
@@ -1318,4 +1318,4 @@ if __name__ == "__main__":
         print(f"中间文件: {config.temp_dir}")
         print("="*40 + "\n")
 
-# mpiexec -n 8 python "C:\Users\Administrator\Desktop\Chess\complexity\trymore.py"
+# mpiexec -n 4 python "C:\Users\Administrator\Desktop\Chess\complexity\trymore.py"
