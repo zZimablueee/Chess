@@ -5,7 +5,7 @@ import os
 # 你的命令
 cmd = [
     "mpiexec", 
-    "-n", "8", 
+    "-n", "4", 
     "python", 
     r"C:\Users\Administrator\Desktop\Chess\complexity\trymore.py"
 ]
