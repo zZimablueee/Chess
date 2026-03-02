@@ -11,6 +11,7 @@ ELO/LSTM/*.keras
 data/
 test/
 complexity/df_moves.csv
+complexity/delta_0/peak.csv
 
 data - try2-rename/
 data -trymore/
