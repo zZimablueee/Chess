@@ -12,6 +12,8 @@ data/
 test/
 complexity/df_moves.csv
 complexity/delta_0/peak.csv
+complexity/delta_0/moves_optimized.parquet
+complexity/delta_0/moves_final_forced.parquet
 
 data - try2-rename/
 data -trymore/
