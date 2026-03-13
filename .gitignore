@@ -19,6 +19,9 @@ complexity/delta_0/df_moves.csv
 complexity/delta_0/df_moves1.parquet
 complexity/delta_0/df_moves2.csv
 complexity/delta_0/df_moves3.csv
+complexity/delta_0/df_moves1-2.parquet
+complexity/delta_0/df_moves2-2.csv
+complexity/delta_0/df_moves3-2.csv
 
 complexity/delta_0/dropforce.csv
 complexity/delta_0/moves_optimized.parquet
