@@ -24,6 +24,7 @@ complexity/delta_0/df_moves3.parquet
 complexity/delta_0/df_moves4.parquet
 complexity/delta_0/df_moves5.parquet
 complexity/delta_0/df_moves6.parquet
+complexity/delta_0/graphs/parameter_est_x0.csv
 
 complexity/delta_0/clock_info.csv
 complexity/delta_0/clock_info.parquet
