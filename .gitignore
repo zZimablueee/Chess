@@ -31,6 +31,9 @@ complexity/delta_0/clock_info.csv
 complexity/delta_0/clock_info.parquet
 complexity/delta_0/0314.parquet
 
+complexity/delta_0/graphs/Figure1_Master_Publication_Final.pdf
+complexity/delta_0/graphs/Figure1_Master_Publication_Repaired.pdf
+
 complexity/delta_0/df_moves1-2.parquet
 
 complexity/delta_0/df_moves2-2.csv
