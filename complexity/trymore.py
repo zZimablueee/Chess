@@ -1245,7 +1245,8 @@ if __name__ == "__main__":
     
     # 设定数据目录: .../Chess/data/input/...csv
     # (pathlib 会自动处理 Windows的 \ 和 Linux的 / )
-    INPUT_CSV_PATH = PROJECT_ROOT / "data" / "processed" / "remaining"/"remain_for_local"/"local_split"/"friend_task_part_4.csv"
+    # "C:\Users\Administrator\Desktop\FINALL\RESULTS\games_to_rerun.csv"
+    INPUT_CSV_PATH = PROJECT_ROOT / "data" / "processed" / "remaining"/"remain_for_local"/"local_split"/"games_to_rerun.csv"
 
     # ================= 2. 环境适配 =================
     if sys.platform.startswith('win'):
