@@ -6,7 +6,7 @@ import pandas as pd
 # ================================
 DB_PATH = r"C:\sqlite3\chess.db"        # 数据库路径
 TABLE_NAME = "games"           # 表名
-CSV_PATH = r"C:\Users\Administrator\Desktop\FINALL\RESULTS\01.csv"       # 已跑结果CSV
+CSV_PATH = r"C:\Users\Administrator\Desktop\FINALL\RESULTS\06.csv"       # 已跑结果CSV
 OUTPUT_PATH = r"C:\Users\Administrator\Desktop\FINALL\RESULTS\games_to_rerun.csv"  # 输出补跑文件
 
 # ================================

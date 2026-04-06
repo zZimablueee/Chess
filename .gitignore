@@ -6,6 +6,8 @@ ELO/LSTM/tf_env/
 
 # Keras / model outputs
 ELO/LSTM/*.keras
+basic/0401.py
+basic/0402.py
 
 # Data / outputs
 data/

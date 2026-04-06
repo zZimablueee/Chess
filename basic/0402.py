@@ -1,19 +1,29 @@
 import pandas as pd
 
-# 1. 读取数据 (请确保路径正确)
-file_path = r"C:\Users\Administrator\Desktop\FINALL\RESULTS\games_to_rerun.csv" 
+# 1️⃣ 读取数据
+file_path = r"C:\Users\Administrator\Desktop\FINALL\RESULTS\06.csv"
 df = pd.read_csv(file_path)
 
-# 2. 过滤掉 uid 为 81519 的行
-# 注意：如果你的 uid 列名不是 'uid'，请替换为实际列名
-original_count = len(df)
- 
+# 2️⃣ 原始行数
+original_rows = len(df)
 
-# 3. 检查是否成功删除
-if len(df) < original_count:
-    print(f"成功删除！剩余行数: {len(df)}")
-else:
-    print("未找到该 uid，请检查列名或数据类型。")
+# 3️⃣ 去重（保留第一次出现的）
+df_dedup = df.drop_duplicates(subset='UID', keep='first')
 
-# 4. 保存回 CSV (建议先另存为一个新文件测试)
-df.to_csv(r"C:\Users\Administrator\Desktop\FINALL\RESULTS\games_to_rerun2.csv" , index=False)
+# 4️⃣ 去重后行数
+remaining_rows = len(df_dedup)
+
+# 5️⃣ 删除的行数
+deleted_rows = original_rows - remaining_rows
+
+# 6️⃣ 检查是否还有重复 UID
+duplicate_check = df_dedup['UID'].duplicated().any()
+
+# 7️⃣ 输出结果
+print(f"原始行数: {original_rows}")
+print(f"删除行数: {deleted_rows}")
+print(f"剩余行数: {remaining_rows}")
+print(f"是否还有重复UID: {duplicate_check}")
+
+# 8️⃣ 保存新文件（可选）
+df_dedup.to_csv(r"C:\Users\Administrator\Desktop\FINALL\RESULTS\06.csv", index=False)

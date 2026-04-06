@@ -2,8 +2,8 @@
 import os
 import pandas as pd
 
-folder_path = r'C:\Users\Administrator\Desktop\FINALL'  # 替换为你想要合并的有一堆CSV文件夹路径
-output_file = r'C:\Users\Administrator\Desktop\FINALL\RESULTS\01.csv'  # 输出合并后的文件，合并后的文件在放该py文件的文件夹里
+folder_path = r'C:\Users\Administrator\Desktop\FINALL\RESULTS\m'  # 替换为你想要合并的有一堆CSV文件夹路径
+output_file = r'C:\Users\Administrator\Desktop\FINALL\RESULTS\05.csv'  # 输出合并后的文件，合并后的文件在放该py文件的文件夹里
 
 csv_files = [f for f in os.listdir(folder_path) if f.endswith('.csv')]
 
