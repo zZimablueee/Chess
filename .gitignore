@@ -10,6 +10,7 @@ basic/0401.py
 basic/0402.py
 
 # Data / outputs
+complexity/delta_0/graphs/skill-elo.parquet
 data/
 test/
 complexity/df_moves.csv
