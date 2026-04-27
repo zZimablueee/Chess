@@ -31,6 +31,7 @@ complexity/delta_0/graphs/df_match.parquet
 complexity/delta_0/graphs/df_moves7.parquet
 complexity/delta_0/graphs/parameter_est_x0.csv
 complexity/delta_0/graphs/parameter_est_2.csv
+complexity/delta_0/graphs/game_features.parquet
 
 complexity/delta_0/clock_info.csv
 complexity/delta_0/clock_info.parquet
