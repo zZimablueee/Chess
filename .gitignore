@@ -10,6 +10,9 @@ basic/0401.py
 basic/0402.py
 
 # Data / outputs
+complexity/delta_0/graphs/best_chess_lstm_binary.pth
+complexity/delta_0/graphs/lstm_binary_test_predictions.parquet
+
 complexity/delta_0/graphs/skill-elo.parquet
 data/
 test/
